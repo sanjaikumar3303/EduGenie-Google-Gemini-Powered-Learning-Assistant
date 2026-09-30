@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduGenie - Learning Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+    <main class="container">
+        <header class="hero">
+            <div class="badge">AI-Powered Learning Assistant</div>
+            <h1>EduGenie</h1>
+            <p>Ask questions, simplify concepts, generate quizzes, summarize text, and build learning paths.</p>
+        </header>
+
+        <section class="card">
+            <label for="task">Choose a task</label>
+            <select id="task">
+                <option value="qa">Question & Answer</option>
+                <option value="explain">Explain a Topic</option>
+                <option value="quiz">Generate Quiz</option>
+                <option value="summarize">Summarize</option>
+                <option value="learn">Learning Recommendations</option>
+            </select>
+
+            <label for="inputText">Your input</label>
+            <textarea id="inputText" rows="9" placeholder="Enter your question, topic, passage, or learning goal..."></textarea>
+
+            <button id="submitBtn" onclick="submitTask()">Generate</button>
+            <div id="status" class="status"></div>
+        </section>
+
+        <section class="card result-card">
+            <h2>Result</h2>
+            <div id="result" class="result">Your generated result will appear here.</div>
+        </section>
+
+        <footer>
+            <span>EduGenie</span> • FastAPI + Google Gemini
+        </footer>
+    </main>
+
+<script>
+const resultBox = document.getElementById("result");
+const statusBox = document.getElementById("status");
+const button = document.getElementById("submitBtn");
+
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+function renderText(text) {
+    return escapeHtml(text).replace(/\n/g, "<br>");
+}
+
+function renderQuiz(data) {
+    if (data.error) return `<div class="error">${escapeHtml(data.error)}</div>`;
+    return data.questions.map((q, i) => `
+        <div class="quiz-question">
+            <h3>${i + 1}. ${escapeHtml(q.question)}</h3>
+            <div class="options">
+                ${q.options.map((option, j) => `
+                    <label class="option">
+                        <input type="radio" name="q${i}" value="${escapeHtml(option)}">
+                        ${String.fromCharCode(65 + j)}. ${escapeHtml(option)}
+                    </label>
+                `).join("")}
+            </div>
+            <button class="check-btn" onclick="checkAnswer(${i}, '${encodeURIComponent(q.answer)}')">Check Answer</button>
+            <div id="feedback-${i}" class="feedback"></div>
+        </div>
+    `).join("");
+}
+
+function checkAnswer(index, encodedAnswer) {
+    const selected = document.querySelector(`input[name="q${index}"]:checked`);
+    const feedback = document.getElementById(`feedback-${index}`);
+    if (!selected) {
+        feedback.textContent = "Please choose an option.";
+        return;
+    }
+
+    const answer = decodeURIComponent(encodedAnswer);
+    if (selected.value === answer) {
+        feedback.textContent = "Correct!";
+        feedback.className = "feedback correct";
+    } else {
+        feedback.textContent = `Incorrect. Correct answer: ${answer}`;
+        feedback.className = "feedback incorrect";
+    }
+}
+
+async function submitTask() {
+    const task = document.getElementById("task").value;
+    const text = document.getElementById("inputText").value.trim();
+
+    if (!text) {
+        resultBox.innerHTML = '<div class="error">Please enter some text first.</div>';
+        return;
+    }
+
+    const endpoints = {
+        qa: "/qa",
+        explain: "/explain",
+        quiz: "/quiz",
+        summarize: "/summarize",
+        learn: "/learn/recommendations"
+    };
+
+    const payload = task === "qa"
+        ? { question: text }
+        : { text: text };
+
+    button.disabled = true;
+    statusBox.textContent = "Generating...";
+    resultBox.textContent = "";
+
+    try {
+        const response = await fetch(endpoints[task], {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.detail || "Request failed.");
+        }
+
+        if (task === "quiz") {
+            resultBox.innerHTML = renderQuiz(data);
+        } else {
+            resultBox.innerHTML = renderText(data.result || "No result returned.");
+        }
+    } catch (error) {
+        resultBox.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
+    } finally {
+        button.disabled = false;
+        statusBox.textContent = "";
+    }
+}
+</script>
+</body>
+</html>
